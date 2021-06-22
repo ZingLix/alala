@@ -514,4 +514,11 @@ def zuitian(msg):
         send_group_msg([{"type": "Plain", "text": r.text}],
                        group_id)
         return True
+    tmp = set(text)
+    if len(tmp) == 1 and "咕" in tmp:
+        r = requests.get("http://www.koboldgame.com/gezi/api.php")
+        t = re.findall('"([^"]*)"', r.text)[0]
+        send_group_msg([{"type": "Plain", "text": t}],
+                       group_id)
+        return True
     return False
