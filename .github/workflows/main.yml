@@ -35,7 +35,7 @@ jobs:
         uses: docker/build-push-action@v2
         with:
           push: true
-          tags: ZingLix/alala:latest
+          tags: zinglix/alala:latest
       -
         name: Image digest
         run: echo ${{ steps.docker_build.outputs.digest }}
