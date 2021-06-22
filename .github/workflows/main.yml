@@ -47,6 +47,6 @@ jobs:
           username: ${{ secrets.USERNAME }}
           password: ${{ secrets.PASSWORD }}
           script: |
-            cd ${{ secret.WORKDIR }} |
+            cd ${{ secrets.WORKDIR }} |
             docker-compose pull |
             docker-compose up -d
