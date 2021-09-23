@@ -4,6 +4,7 @@ import re
 import time
 from Util.config import config, req_headers
 from rule import keywords, rules, bili_mtr_list
+import json
 
 import traceback
 
@@ -21,6 +22,9 @@ def send(path, msg):
         msg["sessionKey"] = session
     r = requests.post("{}/{}".format(mirai_path, path), json=msg)
     if r.status_code != 200:
+        print("bad request:")
+        print("send: {} - {}".format( path, json.dumps(msg)))
+        print("return: {}", r.content)
         return {}
     return r.json()
 
@@ -35,9 +39,10 @@ def get(path, param={}):
 
 def verify():
     global session
-    auth = send("auth", {"authKey": str(config["mirai"]["authKey"])})
+    auth = send("verify", {"verifyKey": str(config["mirai"]["authKey"])})
+    print(auth)
     session = auth["session"]
-    send("verify", {"qq": config["mirai"]["qq"]})
+    send("bind", {"qq": config["mirai"]["qq"]})
 
 
 def get_new_msg():
@@ -453,7 +458,6 @@ def bili_monitor():
                     "https://api.bilibili.com/x/space/arc/search?mid={}&pn=1&ps=25&order=pubdate&index=1&jsonp=jsonp".format(item['uid']), headers=headers)
                 r = r.json()
                 video = r["data"]['list']['vlist'][0]
-                print(video)
                 cur_time = int(time.time())
                 rel_time = video['created']
                 vid_info = {

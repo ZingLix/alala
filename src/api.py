@@ -109,14 +109,14 @@ def remote_send_personal_msg():
 @login_required
 def group_list():
     group = get("groupList")
-    return json.dumps(group)
+    return json.dumps(group['data'])
 
 
 @app.route("/api/friends", methods=["GET"])
 @login_required
 def friend_list():
     group = get("friendList")
-    return json.dumps(group)
+    return json.dumps(group['data'])
 
 
 @app.route("/api/bili_monitor", methods=["GET"])
