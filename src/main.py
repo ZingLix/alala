@@ -8,10 +8,10 @@ import traceback
 
 
 def run_flask():
-    app.run(host='0.0.0.0', port=config["api"]["port"], debug=False)
+    app.run(host="0.0.0.0", port=config["api"]["port"], debug=False)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     update_rules()
     update_keywords_list()
     verify()

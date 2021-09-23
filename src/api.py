@@ -73,8 +73,7 @@ def add_keywords():
 @app.route("/api/keywords/<keyword_id>", methods=["POST"], strict_slashes=False)
 @login_required
 def update_keywords(keyword_id):
-    keywords_db.update_one({"_id": ObjectId(keyword_id)}, {
-                           "$set": request.json})
+    keywords_db.update_one({"_id": ObjectId(keyword_id)}, {"$set": request.json})
     update_keywords_list()
     return json.dumps({"status": "success"})
 
@@ -91,8 +90,13 @@ def delete_keywords(keyword_id):
 @login_required
 def remote_send_group_msg():
     recv_req = request.json
-    send("sendGroupMessage", {"target": recv_req["target"], "messageChain": [
-         {"type": "Plain", "text": recv_req["message"]}]})
+    send(
+        "sendGroupMessage",
+        {
+            "target": recv_req["target"],
+            "messageChain": [{"type": "Plain", "text": recv_req["message"]}],
+        },
+    )
     return json.dumps({"status": "success"})
 
 
@@ -100,8 +104,13 @@ def remote_send_group_msg():
 @login_required
 def remote_send_personal_msg():
     recv_req = request.json
-    send("sendFriendMessage", {"target": recv_req["target"], "messageChain": [
-         {"type": "Plain", "text": recv_req["message"]}]})
+    send(
+        "sendFriendMessage",
+        {
+            "target": recv_req["target"],
+            "messageChain": [{"type": "Plain", "text": recv_req["message"]}],
+        },
+    )
     return json.dumps({"status": "success"})
 
 
@@ -109,14 +118,14 @@ def remote_send_personal_msg():
 @login_required
 def group_list():
     group = get("groupList")
-    return json.dumps(group['data'])
+    return json.dumps(group["data"])
 
 
 @app.route("/api/friends", methods=["GET"])
 @login_required
 def friend_list():
     group = get("friendList")
-    return json.dumps(group['data'])
+    return json.dumps(group["data"])
 
 
 @app.route("/api/bili_monitor", methods=["GET"])
@@ -147,9 +156,10 @@ def delete_bili_mtr(rule_id):
 @login_required
 def add_bili_mtr():
     rule = request.json
-    bid = rule['uid']
+    bid = rule["uid"]
     user_info = requests.get(
-        "https://api.bilibili.com/x/space/acc/info?mid={}&jsonp=jsonp".format(bid)).json()['data']['name']
-    rule['name'] = user_info
+        "https://api.bilibili.com/x/space/acc/info?mid={}&jsonp=jsonp".format(bid)
+    ).json()["data"]["name"]
+    rule["name"] = user_info
     id = str(bili_mtr_db.insert_one(rule).inserted_id)
     return json.dumps({"_id": id})

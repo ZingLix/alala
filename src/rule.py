@@ -24,7 +24,7 @@ def update_keywords_list():
 def bili_mtr_list():
     mtr_list = []
     for item in bili_mtr_db.find():
-        if not item['disabled']:
+        if not item["disabled"]:
             mtr_list.append(item)
     return mtr_list
 
