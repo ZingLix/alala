@@ -12,8 +12,10 @@ client = pymongo.MongoClient(
     "mongodb://%s:%s@%s:%s/"
     % (username, password, db_config["path"], db_config["port"])
 )
+
 db = client["alala"]
 rule_db = db["rules"]
 user_db = db["user"]
 keywords_db = db["keywords"]
 bili_mtr_db = db["bili_monitor"]
+permission_db = db["permission"]

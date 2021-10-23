@@ -6,6 +6,7 @@ from Util.db import user_db
 from bson import ObjectId
 from flask import Blueprint, request
 from flask_cors import cross_origin
+import permission
 
 login_manager = flask_login.LoginManager()
 user_bp = Blueprint("user", __name__, url_prefix="/api/user")
@@ -57,7 +58,7 @@ def logout():
 
 @user_bp.route("/", methods=["GET"])
 @login_required
-def current_user():
+def current_login_user():
     user = flask_login.current_user
     if user is None:
         return 403
@@ -72,7 +73,8 @@ def register():
     user = query_user(username)
     if user is None:
         user_db.insert_one({"username": username, "password": password})
-        return
+        permission.init_permission(username)
+        return ""
 
     return json.dumps({"error": "The username has been registered"}), 400
 
