@@ -194,7 +194,6 @@ def add_bili_mtr():
 @login_required
 def get_user_permission():
     user = flask_login.current_user
-    print(user)
     perm = permission.get_permission(user.username)
     perm_list = []
     if perm["role"] == 0:
@@ -214,3 +213,11 @@ def update_user_permission(username):
     r = request.json
     permission.update_permission(username, {"person": r["person"], "group": r["group"]})
     return json.dumps({"status": "success"})
+
+
+@app.route("/api/self_permission/", methods=["GET"])
+@login_required
+def get_self_permission():
+    user = flask_login.current_user
+    perm = permission.get_permission(user.username)
+    return json.dumps(perm)
