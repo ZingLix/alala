@@ -135,7 +135,8 @@ def group_list():
     group = group["data"]
     perm = permission.get_current_permission()
     perm_group = set(perm["group"])
-    group = [g for g in group if g["id"] in perm_group]
+    if perm.role != 0:
+        group = [g for g in group if g["id"] in perm_group]
     return json.dumps(group)
 
 
@@ -146,8 +147,9 @@ def friend_list():
     person = person["data"]
     perm = permission.get_current_permission()
     perm_person = set(perm["person"])
-    group = [g for g in person if g["id"] in perm_person]
-    return json.dumps(group)
+    if perm.role != 0:
+        person = [g for g in person if g["id"] in perm_person]
+    return json.dumps(person)
 
 
 @app.route("/api/bili_monitor", methods=["GET"])
