@@ -6,7 +6,7 @@ from bson import ObjectId
 import flask_login
 import permission
 import requests
-from Util.db import rule_db, keywords_db, bili_mtr_db, user_db
+from Util.db import rule_db, keywords_db, bili_mtr_db, user_db, permission_db
 from rule import keywords, update_keywords_list, update_rules
 from qqbot import send, get
 from user import current_login_user, register_user_module
@@ -34,7 +34,7 @@ def add_postprocess_file():
 @login_required
 def update_postprocess_file(rule_id):
     r = request.json
-    r["creator"] = current_user.username
+    r.pop("creator", None)
     rule_db.update_one({"_id": ObjectId(rule_id)}, {"$set": r})
     update_rules()
     return json.dumps({"status": "success"})
@@ -84,7 +84,7 @@ def add_keywords():
 @login_required
 def update_keywords(keyword_id):
     r = request.json
-    r["creator"] = current_user.username
+    r.pop("creator", None)
     keywords_db.update_one({"_id": ObjectId(keyword_id)}, {"$set": r})
     update_keywords_list()
     return json.dumps({"status": "success"})
@@ -101,9 +101,17 @@ def delete_keywords(keyword_id):
 
 
 @app.route("/api/send_group/", methods=["POST"], strict_slashes=False)
-@login_required
 def remote_send_group_msg():
     recv_req = request.json
+    key = request.args.get("key")
+    if key is None:
+        perm = permission.get_current_permission()
+    else:
+        perm = permission_db.find_one({"key": str(key)})
+    if perm is None or not permission.check_per_group_permission(
+        perm, recv_req["target"]
+    ):
+        return json.dumps({"status": "error", "error": "no permission"}), 403
     send(
         "sendGroupMessage",
         {
@@ -115,9 +123,17 @@ def remote_send_group_msg():
 
 
 @app.route("/api/send/", methods=["POST"], strict_slashes=False)
-@login_required
 def remote_send_personal_msg():
     recv_req = request.json
+    key = request.args.get("key")
+    if key is None or key == "":
+        perm = permission.get_current_permission()
+    else:
+        perm = permission_db.find_one({"key": str(key)})
+    if perm is None or not permission.check_per_person_permission(
+        perm, recv_req["target"]
+    ):
+        return json.dumps({"status": "error", "error": "no permission"}), 403
     send(
         "sendFriendMessage",
         {
@@ -166,7 +182,7 @@ def get_bili_mtr():
 @login_required
 def update_bili_mtr(rule_id):
     r = request.json
-    r["creator"] = current_user.username
+    r.pop("creator", None)
     bili_mtr_db.update_one({"_id": ObjectId(rule_id)}, {"$set": r})
     return json.dumps({"status": "success"})
 
@@ -223,3 +239,18 @@ def get_self_permission():
     user = flask_login.current_user
     perm = permission.get_permission(user.username)
     return json.dumps(perm)
+
+
+@app.route("/api/key/<username>", methods=["POST"])
+@login_required
+def update_key(username):
+    user = flask_login.current_user
+    if (
+        permission.get_current_permission()["role"] != 0
+        and current_user.username != username
+    ):
+        return json.dumps({"status": "error", "error": "no permission"}), 403
+    permission_db.update_one(
+        {"username": username}, {"$set": {"key": permission.generate_key()}}
+    )
+    return json.dumps({"status": "success"})
