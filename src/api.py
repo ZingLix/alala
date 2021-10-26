@@ -52,7 +52,11 @@ def delete_postprocess_file(rule_id):
 @login_required
 def get_postprocess_file():
     res = []
-    for item in rule_db.find({"creator": current_user.username}):
+    if permission.get_current_permission()["role"] != 0:
+        rule_it = rule_db.find({"creator": current_user.username})
+    else:
+        rule_it = rule_db.find()
+    for item in rule_it:
         item["_id"] = str(item["_id"])
         res.append(item)
 
@@ -63,7 +67,11 @@ def get_postprocess_file():
 @login_required
 def get_keywords():
     res = []
-    for item in keywords_db.find({"creator": current_user.username}):
+    if permission.get_current_permission()["role"] != 0:
+        keyword_it = keywords_db.find({"creator": current_user.username})
+    else:
+        keyword_it = keywords_db.find()
+    for item in keyword_it:
         item["_id"] = str(item["_id"])
         res.append(item)
 
@@ -172,7 +180,11 @@ def friend_list():
 @login_required
 def get_bili_mtr():
     res = []
-    for item in bili_mtr_db.find({"creator": current_user.username}):
+    if permission.get_current_permission()["role"] != 0:
+        mtr_it = bili_mtr_db.find({"creator": current_user.username})
+    else:
+        mtr_it = bili_mtr_db.find()
+    for item in mtr_it:
         item["_id"] = str(item["_id"])
         res.append(item)
     return json.dumps(res)
