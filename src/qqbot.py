@@ -327,7 +327,7 @@ def deal_command(msg):
         if item["type"] != "Plain":
             return False
         text_list.append(item["text"])
-    if text_list[0][0] not in [".", "。"]:
+    if text_list[0][0] not in [".", "。"] or len(text_list[0]) < 2:
         return False
     text_list = " ".join(text_list).split(" ")
     command = text_list[0][1:]
