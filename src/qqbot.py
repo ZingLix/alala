@@ -342,6 +342,8 @@ def deal_command(msg):
             return command_group_roll(text_list, msg)
         if command[0] == "r":
             return command_new_roll(text_list, msg)
+        if "股票" in command:
+            return stock_report(text_list, msg)
     return False
 
 
@@ -533,6 +535,11 @@ def bili_monitor():
                 traceback.print_exc()
                 continue
         time.sleep(sleep_time)
+
+
+def stock_report(text_list, msg):
+    requests.get(config['bot']['stock']['url'], params={"groupid": msg["sender"]["group"]["id"]})
+    return True
 
 
 def zuitian(msg):
