@@ -89,6 +89,19 @@ def deal_msg(msg):
         deal_group_msg(msg)
     if msg["type"] == "FriendMessage":
         deal_friend_msg(msg)
+    if msg["type"] == "NewFriendRequestEvent":
+        auto_add_friend(msg)
+
+
+def auto_add_friend(msg):
+    req = {
+        "eventId": msg["eventId"],
+        "fromId": msg["fromId"],
+        "groupId": msg["groupId"],
+        "operate": 0,
+        "message": "我就是神！！",
+    }
+    send("resp/newFriendRequestEvent", req)
 
 
 def deal_friend_msg(msg):
@@ -538,7 +551,9 @@ def bili_monitor():
 
 
 def stock_report(text_list, msg):
-    requests.get(config['bot']['stock']['url'], params={"groupid": msg["sender"]["group"]["id"]})
+    requests.get(
+        config["bot"]["stock"]["url"], params={"groupid": msg["sender"]["group"]["id"]}
+    )
     return True
 
 
