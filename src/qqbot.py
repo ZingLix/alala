@@ -99,7 +99,7 @@ def auto_add_friend(msg):
         "fromId": msg["fromId"],
         "groupId": msg["groupId"],
         "operate": 0,
-        "message": "我就是神！！",
+        "message": "",
     }
     send("resp/newFriendRequestEvent", req)
 
@@ -357,7 +357,23 @@ def deal_command(msg):
             return command_new_roll(text_list, msg)
         if "股票" in command:
             return stock_report(text_list, msg)
+        if command == "意义":
+            return command_meaning(text_list, msg)
     return False
+
+
+def command_meaning(text_list, msg):
+    group_id = msg["sender"]["group"]["id"]
+    if len(text_list) < 2:
+        send_group_msg([{"type": "Plain", "text": "缺少参数"}], group_id)
+        return True
+    name = text_list[1]
+    r = requests.get(
+        "https://wtf.hiigara.net/api/run/mRIFuS/{}?event=ManualRun".format(name)
+    )
+    r = r.json()
+    send_group_msg([{"type": "Plain", "text": r["text"]}], group_id)
+    return True
 
 
 def command_personal_send(text_list, msg):
