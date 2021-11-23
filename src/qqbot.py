@@ -1,3 +1,4 @@
+from threading import Lock
 import requests
 import random
 import re
@@ -5,13 +6,15 @@ import time
 from Util.config import config, req_headers
 from rule import keywords, rules, bili_mtr_list
 import json
-
+from concurrent.futures import ThreadPoolExecutor
 import traceback
 
 
 chat_history = {}
 MAX_LEN = config["bot"]["max_msg_len"]
 
+executor = ThreadPoolExecutor(max_workers=8)
+lock = Lock()
 session = None
 mirai_path = "{}:{}".format(config["mirai"]["path"], config["mirai"]["port"])
 
@@ -85,6 +88,10 @@ def cmp_obj(o1, o2):
 
 
 def deal_msg(msg):
+    executor.submit(deal_msg_, msg)
+
+
+def deal_msg_(msg):
     if msg["type"] == "GroupMessage":
         deal_group_msg(msg)
     if msg["type"] == "FriendMessage":
@@ -114,12 +121,15 @@ def deal_group_msg(msg):
 
     message = {"id": msg["sender"]["id"], "msg": msg["messageChain"]}
     group_id = msg["sender"]["group"]["id"]
+
+    lock.acquire()
     if group_id not in chat_history:
         chat_history[group_id] = [message] + [{"id": 0, "msg": ""}] * (MAX_LEN - 1)
     else:
         chat_history[group_id].insert(0, message)
     if len(chat_history[group_id]) > MAX_LEN:
         chat_history[group_id] = chat_history[group_id][:MAX_LEN]
+    lock.release()
 
     if ban_user(msg):
         return
@@ -202,7 +212,9 @@ def alalasb(msg):
 
 
 def repeat(msg):
+    lock.acquire()
     msg_history = chat_history[msg["sender"]["group"]["id"]]
+    lock.release()
     if len(msg_history) < 3:
         return False
     msgChainList = []
@@ -273,9 +285,11 @@ def get_all_replace_result(s, replace_dict):
 
 def get_return_msg(input_msg, group_id, rule, user_id):
     chat_history_map = {}
+    lock.acquire()
     for idx, item in enumerate(chat_history[group_id]):
         if len(item["msg"]) == 2 and item["msg"][1]["type"] == "Plain":
             chat_history_map["m" + str(idx)] = item["msg"][1]["text"]
+    lock.release()
     chat_history_map["user_id"] = user_id
     replace_dict = {k: [chat_history_map[k]] for k in chat_history_map}
     for var in rule["vars"]:
