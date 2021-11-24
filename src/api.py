@@ -4,9 +4,10 @@ from flask import Flask, request
 from flask_cors import CORS
 from bson import ObjectId
 import flask_login
+from requests import api
 import permission
 import requests
-from Util.db import rule_db, keywords_db, bili_mtr_db, user_db, permission_db
+from Util.db import rule_db, keywords_db, bili_mtr_db, user_db, permission_db, api_db
 from rule import keywords, update_keywords_list, update_rules
 from qqbot import send, get
 from user import current_login_user, register_user_module
@@ -265,4 +266,47 @@ def update_key(username):
     permission_db.update_one(
         {"username": username}, {"$set": {"key": permission.generate_key()}}
     )
+    return json.dumps({"status": "success"})
+
+
+@app.route("/api/api/", methods=["POST"], strict_slashes=False)
+@login_required
+def add_api():
+    rule = request.json
+    rule["creator"] = current_user.username
+    id = str(api_db.insert_one(rule).inserted_id)
+    return json.dumps({"_id": id})
+
+
+@app.route("/api/api/", methods=["GET"], strict_slashes=False)
+@login_required
+def get_api():
+    user = flask_login.current_user
+    perm = permission.get_permission(user.username)
+    api_list = []
+
+    if perm["role"] == 0:
+        api_iter = api_db.find()
+    else:
+        api_iter = api_db.find({"creater": current_user.username})
+    for api in api_iter:
+        api["_id"] = str(api["_id"])
+        api_list.append(api)
+
+    return json.dumps(api_list)
+
+
+@app.route("/api/api/<api_id>", methods=["POST"], strict_slashes=False)
+@login_required
+def update_api(api_id):
+    r = request.json
+    r.pop("creator", None)
+    api_db.update_one({"_id": ObjectId(api_id)}, {"$set": r})
+    return json.dumps({"status": "success"})
+
+
+@app.route("/api/api/<api_id>", methods=["DELETE"], strict_slashes=False)
+@login_required
+def delete_api(api_id):
+    api_db.delete_one({"_id": ObjectId(api_id), "creator": current_user.username})
     return json.dumps({"status": "success"})

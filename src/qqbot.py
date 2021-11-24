@@ -8,7 +8,10 @@ from rule import keywords, rules, bili_mtr_list
 import json
 from concurrent.futures import ThreadPoolExecutor
 import traceback
-
+from Util.db import api_db, error_db
+from bson import ObjectId
+from string import Template
+import datetime
 
 chat_history = {}
 MAX_LEN = config["bot"]["max_msg_len"]
@@ -92,12 +95,22 @@ def deal_msg(msg):
 
 
 def deal_msg_(msg):
-    if msg["type"] == "GroupMessage":
-        deal_group_msg(msg)
-    if msg["type"] == "FriendMessage":
-        deal_friend_msg(msg)
-    if msg["type"] == "NewFriendRequestEvent":
-        auto_add_friend(msg)
+    try:
+        if msg["type"] == "GroupMessage":
+            deal_group_msg(msg)
+        if msg["type"] == "FriendMessage":
+            deal_friend_msg(msg)
+        if msg["type"] == "NewFriendRequestEvent":
+            auto_add_friend(msg)
+    except:
+        error_db.insert_one(
+            {
+                "time": str(datetime.datetime.now()),
+                "msg": msg,
+                "error": traceback.format_exc(),
+            }
+        )
+        print(traceback.format_exc())
 
 
 def auto_add_friend(msg):
@@ -138,8 +151,6 @@ def deal_group_msg(msg):
     if deal_command(msg):
         return
     if alalasb(msg):
-        return
-    if zuitian(msg):
         return
     if repeat(msg):
         return
@@ -246,12 +257,7 @@ def deal_plain_text(msg):
     recv_message = msg["messageChain"][1]["text"]
     for rule in rules():
         if group_id in rule["suitable_group"]:
-            try:
-                return_msg = get_return_msg(
-                    recv_message, group_id, rule, str(sender_id)
-                )
-            except KeyError:
-                continue
+            return_msg = get_return_msg(recv_message, group_id, rule, str(sender_id))
             if return_msg is not None:
                 print(return_msg)
                 send_group_msg([{"type": "Plain", "text": return_msg}], group_id)
@@ -298,51 +304,63 @@ def get_return_msg(input_msg, group_id, rule, user_id):
             all_replace_res = get_all_replace_result(v, replace_dict)
             var_possible_str += all_replace_res
         replace_dict[var["varname"]] = var_possible_str
-
-    all_res = None
-    for expr in rule["exprs"]:
-        expr1 = expr["expr1"].format(**chat_history_map)
-        expr2 = [get_all_replace_result(s, replace_dict) for s in expr["expr2"]]
-        tmp = []
-        for t in expr2:
-            tmp += t
-        expr2 = tmp
-        if expr["regex"] == False:
-            if expr["operator"] == "equal":
-                cur_res = expr1 in expr2
+    try:
+        all_res = None
+        for expr in rule["exprs"]:
+            expr1 = expr["expr1"].format(**chat_history_map)
+            expr2 = [get_all_replace_result(s, replace_dict) for s in expr["expr2"]]
+            tmp = []
+            for t in expr2:
+                tmp += t
+            expr2 = tmp
+            if expr["regex"] == False:
+                if expr["operator"] == "equal":
+                    cur_res = expr1 in expr2
+                else:
+                    # elif expr["operator"] == "in":
+                    cur_res = False
+                    for string in expr2:
+                        if string in expr1:
+                            cur_res = True
+                            break
             else:
-                # elif expr["operator"] == "in":
-                cur_res = False
-                for string in expr2:
-                    if string in expr1:
-                        cur_res = True
-                        break
-        else:
-            if expr["operator"] == "equal":
-                cur_res = False
-                for string in expr2:
-                    if re.fullmatch(string, expr1):
-                        cur_res = True
-                        break
+                if expr["operator"] == "equal":
+                    cur_res = False
+                    for string in expr2:
+                        if re.fullmatch(string, expr1):
+                            cur_res = True
+                            break
+                else:
+                    # elif expr["operator"] == "in":
+                    cur_res = False
+                    for string in expr2:
+                        if re.match(string, expr1):
+                            cur_res = True
+                            break
+            if expr["negative"] == True:
+                cur_res = not cur_res
+            if all_res is None:
+                all_res = cur_res
             else:
-                # elif expr["operator"] == "in":
-                cur_res = False
-                for string in expr2:
-                    if re.match(string, expr1):
-                        cur_res = True
-                        break
-        if expr["negative"] == True:
-            cur_res = not cur_res
-        if all_res is None:
-            all_res = cur_res
-        else:
-            if expr["relation"] == "and":
-                all_res = cur_res and all_res
-            else:
-                all_res = cur_res or all_res
+                if expr["relation"] == "and":
+                    all_res = cur_res and all_res
+                else:
+                    all_res = cur_res or all_res
+    except KeyError:
+        return None
     if all_res:
         if random.randrange(100) > rule["probability"]:
             return None
+        context = {"text": input_msg, "groupid": group_id, "userid": user_id}
+        for i, part in enumerate(input_msg.split(" ")):
+            context["p" + str(i)] = part
+
+        if "api" in rule:
+            for api in rule["api"]:
+                result = get_api_result(api["api_id"], context)
+                if result is None:
+                    return None
+                replace_dict[api["varname"]] = [result]
         return random.choice(get_all_replace_result(rule["reply"], replace_dict))
     else:
         return None
@@ -369,25 +387,7 @@ def deal_command(msg):
             return command_group_roll(text_list, msg)
         if command[0] == "r":
             return command_new_roll(text_list, msg)
-        if "股票" in command:
-            return stock_report(text_list, msg)
-        if command == "意义":
-            return command_meaning(text_list, msg)
     return False
-
-
-def command_meaning(text_list, msg):
-    group_id = msg["sender"]["group"]["id"]
-    if len(text_list) < 2:
-        send_group_msg([{"type": "Plain", "text": "缺少参数"}], group_id)
-        return True
-    name = text_list[1]
-    r = requests.get(
-        "https://wtf.hiigara.net/api/run/mRIFuS/{}?event=ManualRun".format(name)
-    )
-    r = r.json()
-    send_group_msg([{"type": "Plain", "text": r["text"]}], group_id)
-    return True
 
 
 def command_personal_send(text_list, msg):
@@ -580,43 +580,38 @@ def bili_monitor():
         time.sleep(sleep_time)
 
 
-def stock_report(text_list, msg):
-    requests.get(
-        config["bot"]["stock"]["url"], params={"groupid": msg["sender"]["group"]["id"]}
-    )
-    return True
+def format_template(template, data):
+    t = Template(template)
+    return t.substitute(data)
 
 
-def zuitian(msg):
-    headers = req_headers["zuitian"]
-    chain = msg["messageChain"]
-    if not (len(chain) == 2 and chain[1]["type"] == "Plain"):
-        return False
-    text = chain[1]["text"]
-    group_id = msg["sender"]["group"]["id"]
-    if text == "来点嘴甜":
-        r = requests.get("https://nmsl.fans/getloveword?type=1", headers=headers)
-        send_group_msg([{"type": "Plain", "text": r.json()["content"]}], group_id)
-        return True
-    if text == "来点彩虹屁":
-        r = requests.get("https://chp.shadiao.app/api.php", headers=headers)
-        send_group_msg([{"type": "Plain", "text": r.text}], group_id)
-        return True
-    headers["referer"] = "https://zuanbot.com/"
-    if text == "来点莲花":
-        r = requests.get(
-            "https://zuanbot.com/api.php?level=min&lang=zh_cn", headers=headers
-        )
-        send_group_msg([{"type": "Plain", "text": r.text}], group_id)
-        return True
-    if text == "来点嘴臭":
-        r = requests.get("https://zuanbot.com/api.php?lang=zh_cn", headers=headers)
-        send_group_msg([{"type": "Plain", "text": r.text}], group_id)
-        return True
-    tmp = set(text)
-    if len(tmp) == 1 and "咕" in tmp:
-        r = requests.get("http://www.koboldgame.com/gezi/api.php")
-        t = re.findall('"([^"]*)"', r.text)[0]
-        send_group_msg([{"type": "Plain", "text": t}], group_id)
-        return True
-    return False
+def get_api_result(api_id, context):
+    api = api_db.find_one({"_id": ObjectId(api_id)})
+    print(api)
+    if api is None:
+        return None
+    headers = {}
+    for item in api["headers"]:
+        headers[item["header"]] = format_template(item["content"], context)
+    send_data = format_template(api["body"], context).encode("utf-8")
+    url = format_template(api["url"], context)
+    print(url)
+    print(send_data)
+    print(headers)
+    if api["method"] == "GET":
+        r = requests.get(url, headers=headers)
+    elif api["method"] == "POST":
+        r = requests.post(url, data=send_data, headers=headers)
+    elif api["method"] == "PUT":
+        r = requests.put(url, data=send_data, headers=headers)
+    elif api["method"] == "DELETE":
+        r = requests.delete(url, data=send_data, headers=headers)
+    else:
+        return None
+    # print(r.text)
+    if r.status_code != 200:
+        return None
+    if "eval" not in api or api["eval"] in [None, ""]:
+        return None
+    post = eval(api["eval"])
+    return post
