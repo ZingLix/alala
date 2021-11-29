@@ -233,6 +233,9 @@ def repeat(msg):
     for m in msg_history:
         msgChainList.append(m["msg"][1:])
 
+    if len(msgChainList[0])==1 and msgChainList[0][0]["type"] == "Plain":
+        return False
+
     def compare_list(a, b):
         if len(a) != len(b):
             return False
@@ -280,6 +283,7 @@ def rec(cur_idx, field_list, replace_dict):
 
 def get_all_replace_result(s, replace_dict):
     field_list = re.findall(r"\{(.*?)\}", s)
+    field_list = list(set(field_list))
     if len(field_list) == 0:
         return [s]
     new_dict = rec(0, field_list, replace_dict)
