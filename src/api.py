@@ -288,7 +288,7 @@ def get_api():
     if perm["role"] == 0:
         api_iter = api_db.find()
     else:
-        api_iter = api_db.find({"creater": current_user.username})
+        api_iter = api_db.find({"creator": current_user.username})
     for api in api_iter:
         api["_id"] = str(api["_id"])
         api_list.append(api)
