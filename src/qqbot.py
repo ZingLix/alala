@@ -233,7 +233,7 @@ def repeat(msg):
     for m in msg_history:
         msgChainList.append(m["msg"][1:])
 
-    if len(msgChainList[0])==1 and msgChainList[0][0]["type"] == "Plain":
+    if len(msgChainList[0]) == 1 and msgChainList[0][0]["type"] == "Plain":
         return False
 
     def compare_list(a, b):
@@ -427,6 +427,16 @@ def command_new_roll(text_list, msg):
 
     frequency = int(frequency)
     dimension = int(dimension)
+
+    if frequency < 1 or frequency > 10000:
+        send(
+            "sendGroupMessage",
+            {
+                "target": msg["sender"]["group"]["id"],
+                "messageChain": [{"type": "Plain", "text": "爬"}],
+            },
+        )
+        return True
 
     random_num = 0
     for i in range(frequency):
