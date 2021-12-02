@@ -5,6 +5,7 @@ import threading
 from qqbot import get_new_msg, deal_msg, verify, bili_monitor
 from rule import update_rules, update_keywords_list
 import traceback
+import logging
 
 
 def run_flask():
@@ -24,7 +25,7 @@ if __name__ == "__main__":
                 time.sleep(1)
                 continue
             if msgList["code"] != 0:
-                print(msgList)
+                logging.error(msgList)
                 time.sleep(5)
                 continue
             msgList = msgList["data"]
@@ -32,8 +33,8 @@ if __name__ == "__main__":
                 time.sleep(0.1)
                 continue
             for msg in msgList:
-                print(msg)
+                logging.debug(msg)
                 deal_msg(msg)
         except Exception as e:
-            traceback.print_exc()
+            logging.error(traceback.format_exc())
             continue

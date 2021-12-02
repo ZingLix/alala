@@ -12,6 +12,7 @@ from Util.db import api_db, error_db
 from bson import ObjectId
 from string import Template
 import datetime
+import logging
 
 chat_history = {}
 MAX_LEN = config["bot"]["max_msg_len"]
@@ -27,9 +28,9 @@ def send(path, msg):
         msg["sessionKey"] = session
     r = requests.post("{}/{}".format(mirai_path, path), json=msg)
     if r.status_code != 200:
-        print("bad request:")
-        print("send: {} - {}".format(path, json.dumps(msg)))
-        print("return: {}", r.content)
+        logging.error("bad request:")
+        logging.error("send: {} - {}".format(path, json.dumps(msg)))
+        logging.error("return: {}", r.content)
         return {}
     return r.json()
 
@@ -45,7 +46,7 @@ def get(path, param={}):
 def verify():
     global session
     auth = send("verify", {"verifyKey": str(config["mirai"]["authKey"])})
-    print(auth)
+    logging.info(auth)
     session = auth["session"]
     send("bind", {"qq": config["mirai"]["qq"]})
 
@@ -106,11 +107,12 @@ def deal_msg_(msg):
         error_db.insert_one(
             {
                 "time": str(datetime.datetime.now()),
-                "msg": msg,
+                "type": "msg",
+                "detail": {"msg": msg},
                 "error": traceback.format_exc(),
             }
         )
-        print(traceback.format_exc())
+        logging.error(traceback.format_exc())
 
 
 def auto_add_friend(msg):
@@ -131,6 +133,9 @@ def deal_friend_msg(msg):
 def deal_group_msg(msg):
     global chat_history
     global MAX_LEN
+
+    if len(msg["messageChain"]) < 2:
+        return
 
     message = {"id": msg["sender"]["id"], "msg": msg["messageChain"]}
     group_id = msg["sender"]["group"]["id"]
@@ -188,9 +193,9 @@ def alalalala(msg):
         if chain[1]["target"] != config["mirai"]["qq"]:
             return False
         m = chain[2]["text"]
-        print(m)
+        logging.info("alala recv: " + m)
         r = requests.post(config["bot"]["chatbot"]["url"], json={"text": m})
-        print(r.json()["text"])
+        logging.info("alala response: " + r.json()["text"])
         send(
             "sendGroupMessage",
             {
@@ -207,7 +212,7 @@ def alalasb(msg):
     if (
         len(chain) == 2
         and chain[1]["type"] == "Plain"
-        and chain[1]["text"] == "alalasb"
+        and re.match("a(la)+sb", chain[1]["text"].replace(" ", "").lower())
     ):
         send("recall", {"target": chain[0]["id"]})
         send(
@@ -229,7 +234,6 @@ def repeat(msg):
     if len(msg_history) < 3:
         return False
     msgChainList = []
-    # print(msgChainList[0])
     for m in msg_history:
         msgChainList.append(m["msg"][1:])
 
@@ -262,7 +266,6 @@ def deal_plain_text(msg):
         if group_id in rule["suitable_group"]:
             return_msg = get_return_msg(recv_message, group_id, rule, str(sender_id))
             if return_msg is not None:
-                print(return_msg)
                 send_group_msg([{"type": "Plain", "text": return_msg}], group_id)
                 return True
     return False
@@ -386,7 +389,6 @@ def deal_command(msg):
         if command == "sendgroup":
             return command_personal_send_group(text_list, msg)
     if msg["type"] == "GroupMessage":
-        print(command)
         if command == "roll":
             return command_group_roll(text_list, msg)
         if command[0] == "r":
@@ -589,7 +591,7 @@ def bili_monitor():
                         for group in item["subs_group"]:
                             send_group_msg(msg, group)
             except Exception as e:
-                traceback.print_exc()
+                logging.error(traceback.format_exc())
                 continue
         time.sleep(sleep_time)
 
@@ -600,32 +602,42 @@ def format_template(template, data):
 
 
 def get_api_result(api_id, context):
-    api = api_db.find_one({"_id": ObjectId(api_id)})
-    print(api)
-    if api is None:
+    try:
+        api = api_db.find_one({"_id": ObjectId(api_id)})
+        if api is None:
+            return None
+        headers = {}
+        for item in api["headers"]:
+            headers[item["header"]] = format_template(item["content"], context)
+        send_data = format_template(api["body"], context).encode("utf-8")
+        url = format_template(api["url"], context)
+        if api["method"] == "GET":
+            r = requests.get(url, headers=headers)
+        elif api["method"] == "POST":
+            r = requests.post(url, data=send_data, headers=headers)
+        elif api["method"] == "PUT":
+            r = requests.put(url, data=send_data, headers=headers)
+        elif api["method"] == "DELETE":
+            r = requests.delete(url, data=send_data, headers=headers)
+        else:
+            return None
+        # print(r.text)
+        if r.status_code != 200:
+            return None
+        if "eval" not in api or api["eval"] in [None, ""]:
+            return None
+        post = eval(api["eval"])
+        if post in [None, ""]:
+            return None
+        return post
+    except:
+        error_db.insert_one(
+            {
+                "time": str(datetime.datetime.now()),
+                "type": "api",
+                "detail": {"api_id": api_id, "context": context},
+                "error": traceback.format_exc(),
+            }
+        )
+        logging.error(traceback.format_exc())
         return None
-    headers = {}
-    for item in api["headers"]:
-        headers[item["header"]] = format_template(item["content"], context)
-    send_data = format_template(api["body"], context).encode("utf-8")
-    url = format_template(api["url"], context)
-    print(url)
-    print(send_data)
-    print(headers)
-    if api["method"] == "GET":
-        r = requests.get(url, headers=headers)
-    elif api["method"] == "POST":
-        r = requests.post(url, data=send_data, headers=headers)
-    elif api["method"] == "PUT":
-        r = requests.put(url, data=send_data, headers=headers)
-    elif api["method"] == "DELETE":
-        r = requests.delete(url, data=send_data, headers=headers)
-    else:
-        return None
-    # print(r.text)
-    if r.status_code != 200:
-        return None
-    if "eval" not in api or api["eval"] in [None, ""]:
-        return None
-    post = eval(api["eval"])
-    return post
