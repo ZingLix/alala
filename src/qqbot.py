@@ -621,7 +621,6 @@ def get_api_result(api_id, context):
             r = requests.delete(url, data=send_data, headers=headers)
         else:
             return None
-        # print(r.text)
         if r.status_code != 200:
             return None
         if "eval" not in api or api["eval"] in [None, ""]:
