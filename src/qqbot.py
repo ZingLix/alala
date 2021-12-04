@@ -1,4 +1,5 @@
 from threading import Lock
+import threading
 import requests
 import random
 import re
@@ -13,6 +14,7 @@ from bson import ObjectId
 from string import Template
 import datetime
 import logging
+import websocket
 
 chat_history = {}
 MAX_LEN = config["bot"]["max_msg_len"]
@@ -20,35 +22,88 @@ MAX_LEN = config["bot"]["max_msg_len"]
 executor = ThreadPoolExecutor(max_workers=8)
 lock = Lock()
 session = None
-mirai_path = "{}:{}".format(config["mirai"]["path"], config["mirai"]["port"])
+mirai_ws_path = "{}://{}:{}".format(
+    "wss" if config["mirai"]["https"] else "ws",
+    config["mirai"]["path"],
+    config["mirai"]["port"],
+)
+
+mirai_http_path = "{}://{}:{}".format(
+    "https" if config["mirai"]["https"] else "http",
+    config["mirai"]["path"],
+    config["mirai"]["port"],
+)
+
+
+ws_server = None
+
+
+def on_message(ws, message):
+    message = json.loads(message)
+    if message["syncId"] == "":
+        global session
+        session = message["data"]["session"]
+        logging.info('Mirai created session success with key "{}"'.format(session))
+    else:
+        data = message["data"]
+        if "code" in data:
+            if data["code"] != 0:
+                logging.error("recv bad response: {}".format(json.dumps(data)))
+                return
+            return
+        logging.info("Mirai pushed: " + json.dumps(message))
+        deal_msg(data)
+
+
+def on_error(ws, error):
+    logging.error("Mirai connection error: " + str(error))
+
+
+def on_open(ws):
+    logging.info("Mirai connect to {} success.".format(mirai_ws_path))
+
+
+def on_close(ws, close_status_code, close_msg):
+    global ws_server
+    ws_server = None
+    logging.info(
+        'Mirai connection closed with code "{}" and message "{}"'.format(
+            str(close_status_code), str(close_msg)
+        )
+    )
+    time.sleep(3)
+    logging.info("Reconnecting Mirai...")
+    start_qqbot_loop()
+
+
+def start_qqbot_loop():
+    global ws_server
+    ws_server = websocket.WebSocketApp(
+        "{}/all?verifyKey={}&qq={}".format(
+            mirai_ws_path, config["mirai"]["authKey"], config["mirai"]["qq"]
+        ),
+        on_message=on_message,
+        on_error=on_error,
+        on_close=on_close,
+        on_open=on_open,
+    )
+    wst = threading.Thread(target=ws_server.run_forever)
+    wst.daemon = True
+    wst.start()
 
 
 def send(path, msg):
-    if session is not None:
-        msg["sessionKey"] = session
-    r = requests.post("{}/{}".format(mirai_path, path), json=msg)
-    if r.status_code != 200:
-        logging.error("bad request:")
-        logging.error("send: {} - {}".format(path, json.dumps(msg)))
-        logging.error("return: {}", r.content)
-        return {}
-    return r.json()
+    send_msg = {"syncId": -1, "command": path, "subCommand": None, "content": msg}
+    if ws_server is not None:
+        ws_server.send(json.dumps(send_msg))
 
 
 def get(path, param={}):
     param["sessionKey"] = session
-    r = requests.get("{}/{}".format(mirai_path, path), params=param)
+    r = requests.get("{}/{}".format(mirai_http_path, path), params=param)
     if len(r.text) == 0:
         return None
     return r.json()
-
-
-def verify():
-    global session
-    auth = send("verify", {"verifyKey": str(config["mirai"]["authKey"])})
-    logging.info(auth)
-    session = auth["session"]
-    send("bind", {"qq": config["mirai"]["qq"]})
 
 
 def get_new_msg():
@@ -566,6 +621,7 @@ def bili_monitor():
                 )
                 r = r.json()
                 video = r["data"]["list"]["vlist"][0]
+                logging.info(json.dumps(video, ensure_ascii=False))
                 cur_time = int(time.time())
                 rel_time = video["created"]
                 vid_info = {
