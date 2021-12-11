@@ -610,6 +610,7 @@ def bili_monitor():
     cfg = config["bot"]["bili_monitor"]
     sleep_time = cfg["interval"]
     headers = req_headers["bili"]
+    last_check_time = int(time.time())
     while True:
         for item in bili_mtr_list():
             try:
@@ -621,8 +622,6 @@ def bili_monitor():
                 )
                 r = r.json()
                 video = r["data"]["list"]["vlist"][0]
-                logging.info(json.dumps(video, ensure_ascii=False))
-                cur_time = int(time.time())
                 rel_time = video["created"]
                 vid_info = {
                     "bvid": video["bvid"],
@@ -635,7 +634,12 @@ def bili_monitor():
                     "length": video["length"],
                     "newline": "\n",
                 }
-                if cur_time - rel_time < sleep_time:
+                if last_check_time < rel_time:
+                    logging.info(
+                        'Bilibili new video found: "{}" from "{}"'.format(
+                            vid_info["title"], vid_info["author"]
+                        )
+                    )
                     send_msg = []
                     for m in item["send_msg"]:
                         send_msg.append(
@@ -649,6 +653,7 @@ def bili_monitor():
             except Exception as e:
                 logging.error(traceback.format_exc())
                 continue
+        last_check_time = int(time.time())
         time.sleep(sleep_time)
 
 
