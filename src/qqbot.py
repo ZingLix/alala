@@ -51,7 +51,7 @@ def on_message(ws, message):
                 logging.error("recv bad response: {}".format(json.dumps(data)))
                 return
             return
-        logging.info("Mirai pushed: " + json.dumps(message))
+        logging.info("Mirai pushed: " + json.dumps(message, ensure_ascii=False))
         deal_msg(data)
 
 
@@ -197,7 +197,15 @@ def deal_group_msg(msg):
 
     lock.acquire()
     if group_id not in chat_history:
-        chat_history[group_id] = [message] + [{"id": 0, "msg": ""}] * (MAX_LEN - 1)
+        chat_history[group_id] = [message] + [
+            {
+                "id": 0,
+                "msg": [
+                    {"type": "Source", "id": 0, "time": 0},
+                    {"type": "Plain", "text": ""},
+                ],
+            }
+        ] * (MAX_LEN - 1)
     else:
         chat_history[group_id].insert(0, message)
     if len(chat_history[group_id]) > MAX_LEN:
@@ -319,6 +327,8 @@ def deal_plain_text(msg):
     recv_message = msg["messageChain"][1]["text"]
     for rule in rules():
         if group_id in rule["suitable_group"]:
+            if random.randint(0, 99) >= rule["probability"]:
+                continue
             return_msg = get_return_msg(recv_message, group_id, rule, str(sender_id))
             if return_msg is not None:
                 send_group_msg([{"type": "Plain", "text": return_msg}], group_id)
@@ -357,6 +367,8 @@ def get_return_msg(input_msg, group_id, rule, user_id):
     for idx, item in enumerate(chat_history[group_id]):
         if len(item["msg"]) == 2 and item["msg"][1]["type"] == "Plain":
             chat_history_map["m" + str(idx)] = item["msg"][1]["text"]
+        else:
+            chat_history_map["m" + str(idx)] = ""
     lock.release()
     chat_history_map["user_id"] = user_id
     replace_dict = {k: [chat_history_map[k]] for k in chat_history_map}
@@ -408,11 +420,21 @@ def get_return_msg(input_msg, group_id, rule, user_id):
                     all_res = cur_res and all_res
                 else:
                     all_res = cur_res or all_res
-    except KeyError:
+    except KeyError as e:
+        error_db.insert_one(
+            {
+                "time": str(datetime.datetime.now()),
+                "type": "rule",
+                "detail": {
+                    "chat_history": chat_history_map,
+                    "replace_dict": replace_dict,
+                    "rule_name": rule["name"],
+                },
+                "error": traceback.format_exc(),
+            }
+        )
         return None
     if all_res:
-        if random.randrange(100) > rule["probability"]:
-            return None
         context = {"text": input_msg, "groupid": group_id, "userid": user_id}
         for i, part in enumerate(input_msg.split(" ")):
             context["p" + str(i)] = part
