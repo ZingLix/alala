@@ -9,7 +9,7 @@ from rule import keywords, rules, bili_mtr_list
 import json
 from concurrent.futures import ThreadPoolExecutor
 import traceback
-from Util.db import api_db, error_db
+from Util.db import api_db, error_db, history_db
 from bson import ObjectId
 from string import Template
 import datetime
@@ -324,7 +324,16 @@ def deal_plain_text(msg):
         return False
     group_id = msg["sender"]["group"]["id"]
     sender_id = msg["sender"]["id"]
-    recv_message = msg["messageChain"][1]["text"]
+    recv_message = "".join([x["text"] for x in msg["messageChain"][1:]])
+    time = msg["messageChain"][0]["time"]
+    history_db.insert_one(
+        {
+            "group_id": group_id,
+            "sender_id": sender_id,
+            "msg": recv_message,
+            "time": time,
+        }
+    )
     for rule in rules():
         if group_id in rule["suitable_group"]:
             if random.randint(0, 99) >= rule["probability"]:
