@@ -5,7 +5,7 @@ import random
 import re
 import time
 from Util.config import config, req_headers
-from rule import keywords, rules, bili_mtr_list
+from rule import keywords, rules, bili_mtr_list, filter_sentence
 import json
 from concurrent.futures import ThreadPoolExecutor
 import traceback
@@ -192,6 +192,9 @@ def deal_group_msg(msg):
     if len(msg["messageChain"]) < 2:
         return
 
+    if filter_msg(msg):
+        return
+
     message = {"id": msg["sender"]["id"], "msg": msg["messageChain"]}
     group_id = msg["sender"]["group"]["id"]
 
@@ -226,6 +229,17 @@ def deal_group_msg(msg):
         return
 
     return
+
+
+def filter_msg(msg):
+    chain = msg["messageChain"]
+    if len(chain) != 2 or chain[1]["type"] != "Plain":
+        return False
+    recv_message = chain[1]["text"]
+    for item in filter_sentence():
+        if item in recv_message:
+            return True
+    return False
 
 
 def ban_user(msg):

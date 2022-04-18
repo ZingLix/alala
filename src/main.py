@@ -2,7 +2,7 @@ from Util.config import config
 from api import app
 import threading
 from qqbot import bili_monitor, start_qqbot_loop
-from rule import update_rules, update_keywords_list
+from rule import init
 import logging
 from gevent.pywsgi import WSGIServer
 
@@ -17,8 +17,7 @@ def run_flask():
 
 
 if __name__ == "__main__":
-    update_rules()
-    update_keywords_list()
+    init()
     threading.Thread(target=run_flask, daemon=True).start()
     threading.Thread(target=bili_monitor, daemon=True).start()
     start_qqbot_loop()
