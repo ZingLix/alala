@@ -178,7 +178,7 @@ def auto_add_friend(msg):
         "operate": 0,
         "message": "",
     }
-    send("resp/newFriendRequestEvent", req)
+    send("resp_newFriendRequestEvent", req)
 
 
 def deal_friend_msg(msg):
