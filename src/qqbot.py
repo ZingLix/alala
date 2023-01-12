@@ -695,6 +695,7 @@ def bili_monitor():
                             send_personal_msg(msg, user)
                         for group in item["subs_group"]:
                             send_group_msg(msg, group)
+                sleep(1)
             except Exception as e:
                 logging.error(traceback.format_exc())
                 continue

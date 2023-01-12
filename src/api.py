@@ -8,6 +8,7 @@ from requests import api
 import permission
 import requests
 from Util.db import rule_db, keywords_db, bili_mtr_db, user_db, permission_db, api_db
+from Util.config import req_headers
 from rule import keywords, update_keywords_list, update_rules
 from qqbot import send, get
 from user import current_login_user, register_user_module
@@ -214,7 +215,8 @@ def add_bili_mtr():
     rule["creator"] = current_user.username
     bid = rule["uid"]
     user_info = requests.get(
-        "https://api.bilibili.com/x/space/acc/info?mid={}&jsonp=jsonp".format(bid)
+        "https://api.bilibili.com/x/space/acc/info?mid={}&jsonp=jsonp".format(bid),
+        headers=req_headers["bili"],
     ).json()["data"]["name"]
     rule["name"] = user_info
     id = str(bili_mtr_db.insert_one(rule).inserted_id)
