@@ -110,8 +110,11 @@ def get_new_msg():
     return get("fetchMessage", {"count": 100})
 
 
-def send_group_msg(msgChain, group_id):
-    send("sendGroupMessage", {"target": group_id, "messageChain": msgChain})
+def send_group_msg(msgChain, group_id, quote=None):
+    send_msg = {"target": group_id, "messageChain": msgChain}
+    if quote is not None:
+        send_msg["quote"] = quote
+    send("sendGroupMessage", send_msg)
 
 
 def send_personal_msg(msg_chain, target):
@@ -356,14 +359,10 @@ def deal_plain_text(msg):
             return_msg = get_return_msg(recv_message, group_id, rule, str(sender_id))
             if return_msg is not None:
                 send_msg = [{"type": "Plain", "text": return_msg}]
+                quote = None
                 if rule.get("quote", False):
-                    send_msg = {
-                        "type": "Quote",
-                        "id": msg_id,
-                        "groupId": group_id,
-                        "origin": send_msg,
-                    }
-                send_group_msg(send_msg, group_id)
+                    quote = msg_id
+                send_group_msg(send_msg, group_id, quote=quote)
                 return True
     return False
 
@@ -467,7 +466,11 @@ def get_return_msg(input_msg, group_id, rule, user_id):
         )
         return None
     if all_res:
-        context = {"text": input_msg, "groupid": group_id, "userid": user_id}
+        context = {
+            "text": json.dumps(input_msg)[1:-1],
+            "groupid": group_id,
+            "userid": user_id,
+        }
         for i, part in enumerate(input_msg.split(" ")):
             context["p" + str(i)] = part
 
@@ -704,7 +707,7 @@ def bili_monitor():
                             send_personal_msg(msg, user)
                         for group in item["subs_group"]:
                             send_group_msg(msg, group)
-                sleep(1)
+                time.sleep(1)
             except Exception as e:
                 logging.error(traceback.format_exc())
                 continue
