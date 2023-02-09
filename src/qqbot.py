@@ -340,6 +340,7 @@ def deal_plain_text(msg):
     sender_id = msg["sender"]["id"]
     recv_message = "".join([x["text"] for x in msg["messageChain"][1:]])
     time = msg["messageChain"][0]["time"]
+    msg_id = msg["messageChain"][0]["id"]
     history_db.insert_one(
         {
             "group_id": group_id,
@@ -354,7 +355,15 @@ def deal_plain_text(msg):
                 continue
             return_msg = get_return_msg(recv_message, group_id, rule, str(sender_id))
             if return_msg is not None:
-                send_group_msg([{"type": "Plain", "text": return_msg}], group_id)
+                send_msg = [{"type": "Plain", "text": return_msg}]
+                if rule.get("quote", False):
+                    send_msg = {
+                        "type": "Quote",
+                        "id": msg_id,
+                        "groupId": group_id,
+                        "origin": send_msg,
+                    }
+                send_group_msg(send_msg, group_id)
                 return True
     return False
 
