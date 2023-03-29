@@ -381,7 +381,7 @@ def rec(cur_idx, field_list, replace_dict):
 
 
 def get_all_replace_result(s, replace_dict):
-    field_list = re.findall(r"\{(.*?)\}", s)
+    field_list = re.findall(r"\{(.*?)\}", s, re.MULTILINE | re.DOTALL)
     field_list = list(set(field_list))
     if len(field_list) == 0:
         return [s]
@@ -432,14 +432,14 @@ def get_return_msg(input_msg, group_id, rule, user_id):
                 if expr["operator"] == "equal":
                     cur_res = False
                     for string in expr2:
-                        if re.fullmatch(string, expr1):
+                        if re.fullmatch(string, expr1, re.MULTILINE | re.DOTALL):
                             cur_res = True
                             break
                 else:
                     # elif expr["operator"] == "in":
                     cur_res = False
                     for string in expr2:
-                        if re.match(string, expr1):
+                        if re.match(string, expr1, re.MULTILINE | re.DOTALL):
                             cur_res = True
                             break
             if expr["negative"] == True:
@@ -672,12 +672,15 @@ def bili_monitor():
         for item in bili_mtr_list():
             try:
                 r = requests.get(
-                    "https://api.bilibili.com/x/space/arc/search?mid={}&pn=1&ps=25&order=pubdate&index=1&jsonp=jsonp".format(
+                    "https://api.bilibili.com/x/space/wbi/arc/search?mid={}&pn=1&ps=25&order=pubdate&index=1&jsonp=jsonp".format(
                         item["uid"]
                     ),
                     headers=headers,
                 )
                 r = r.json()
+                if r["code"] != 0:
+                    print(r)
+                    continue
                 video = r["data"]["list"]["vlist"][0]
                 rel_time = video["created"]
                 vid_info = {
@@ -707,7 +710,7 @@ def bili_monitor():
                             send_personal_msg(msg, user)
                         for group in item["subs_group"]:
                             send_group_msg(msg, group)
-                time.sleep(1)
+                time.sleep(0.1)
             except Exception as e:
                 logging.error(traceback.format_exc())
                 continue
