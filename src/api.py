@@ -145,7 +145,7 @@ def remote_send_personal_msg():
 @app.route("/api/groups", methods=["GET"])
 @login_required
 def group_list():
-    group_list = get("get_group_list")
+    group_list = get("get_group_list")["data"]
     group = []
     for g in group_list:
         group.append(
@@ -154,7 +154,6 @@ def group_list():
                 "name": g["group_name"],
             }
         )
-    group = group["data"]
     perm = permission.get_current_permission()
     perm_group = set(perm["group"])
     if perm["role"] != 0:
@@ -165,7 +164,7 @@ def group_list():
 @app.route("/api/friends", methods=["GET"])
 @login_required
 def friend_list():
-    person_list = get("get_friend_list")
+    person_list = get("get_friend_list")["data"]
     person = []
     for p in person_list:
         person.append(
