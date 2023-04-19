@@ -10,7 +10,7 @@ import requests
 from Util.db import rule_db, keywords_db, bili_mtr_db, user_db, permission_db, api_db
 from Util.config import req_headers
 from rule import keywords, update_keywords_list, update_rules
-from qqbot import send, get
+from qqbot import get, send_group_text, send_personal_text
 from user import current_login_user, register_user_module
 from flask_login import login_required
 import secrets
@@ -122,13 +122,7 @@ def remote_send_group_msg():
         perm, recv_req["target"]
     ):
         return json.dumps({"status": "error", "error": "no permission"}), 403
-    send(
-        "sendGroupMessage",
-        {
-            "target": recv_req["target"],
-            "messageChain": [{"type": "Plain", "text": recv_req["message"]}],
-        },
-    )
+    send_group_text(recv_req["message"], recv_req["target"])
     return json.dumps({"status": "success"})
 
 
@@ -144,20 +138,22 @@ def remote_send_personal_msg():
         perm, recv_req["target"]
     ):
         return json.dumps({"status": "error", "error": "no permission"}), 403
-    send(
-        "sendFriendMessage",
-        {
-            "target": recv_req["target"],
-            "messageChain": [{"type": "Plain", "text": recv_req["message"]}],
-        },
-    )
+    send_personal_text(recv_req["message"], recv_req["target"])
     return json.dumps({"status": "success"})
 
 
 @app.route("/api/groups", methods=["GET"])
 @login_required
 def group_list():
-    group = get("groupList")
+    group_list = get("get_group_list")
+    group = []
+    for g in group_list:
+        group.append(
+            {
+                "id": g["group_id"],
+                "name": g["group_name"],
+            }
+        )
     group = group["data"]
     perm = permission.get_current_permission()
     perm_group = set(perm["group"])
@@ -169,8 +165,12 @@ def group_list():
 @app.route("/api/friends", methods=["GET"])
 @login_required
 def friend_list():
-    person = get("friendList")
-    person = person["data"]
+    person_list = get("get_friend_list")
+    person = []
+    for p in person_list:
+        person.append(
+            {"id": p["user_id"], "nickname": p["nickname"], "remark": p["remark"]}
+        )
     perm = permission.get_current_permission()
     perm_person = set(perm["person"])
     if perm["role"] != 0:

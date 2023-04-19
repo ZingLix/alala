@@ -25,13 +25,13 @@ session = None
 mirai_ws_path = "{}://{}:{}".format(
     "wss" if config["mirai"]["https"] else "ws",
     config["mirai"]["path"],
-    config["mirai"]["port"],
+    config["mirai"]["ws_port"],
 )
 
 mirai_http_path = "{}://{}:{}".format(
     "https" if config["mirai"]["https"] else "http",
     config["mirai"]["path"],
-    config["mirai"]["port"],
+    config["mirai"]["http_port"],
 )
 
 
@@ -39,20 +39,13 @@ ws_server = None
 
 
 def on_message(ws, message):
-    message = json.loads(message)
-    if message["syncId"] == "":
-        global session
-        session = message["data"]["session"]
-        logging.info('Mirai created session success with key "{}"'.format(session))
-    else:
-        data = message["data"]
-        if "code" in data:
-            if data["code"] != 0:
-                logging.error("recv bad response: {}".format(json.dumps(data)))
-                return
-            return
-        logging.info("Mirai pushed: " + json.dumps(message, ensure_ascii=False))
-        deal_msg(data)
+    data = json.loads(message)
+    if "retcode" in data:
+        if data["retcode"] != 0:
+            logging.error("recv bad response: {}".format(json.dumps(data)))
+        return
+    logging.info("Mirai pushed: " + json.dumps(message, ensure_ascii=False))
+    deal_msg(data)
 
 
 def on_error(ws, error):
@@ -79,9 +72,7 @@ def on_close(ws, close_status_code, close_msg):
 def start_qqbot_loop():
     global ws_server
     ws_server = websocket.WebSocketApp(
-        "{}/all?verifyKey={}&qq={}".format(
-            mirai_ws_path, config["mirai"]["authKey"], config["mirai"]["qq"]
-        ),
+        "{}/".format(mirai_ws_path),
         on_message=on_message,
         on_error=on_error,
         on_close=on_close,
@@ -93,59 +84,66 @@ def start_qqbot_loop():
 
 
 def send(path, msg):
-    send_msg = {"syncId": -1, "command": path, "subCommand": None, "content": msg}
+    send_msg = {"action": path, "params": msg}
     if ws_server is not None:
         ws_server.send(json.dumps(send_msg))
 
 
 def get(path, param={}):
-    param["sessionKey"] = session
     r = requests.get("{}/{}".format(mirai_http_path, path), params=param)
     if len(r.text) == 0:
         return None
     return r.json()
 
 
-def get_new_msg():
-    return get("fetchMessage", {"count": 100})
-
-
 def send_group_msg(msgChain, group_id, quote=None):
-    send_msg = {"target": group_id, "messageChain": msgChain}
     if quote is not None:
-        send_msg["quote"] = quote
-    send("sendGroupMessage", send_msg)
+        msgChain = [{"type": "reply", "data": {"id": quote}}] + msgChain
+    send_msg = {"group_id": group_id, "message": msgChain}
+    send("send_group_msg", send_msg)
+
+
+def send_group_text(text, group_id, quote=None):
+    data = [{"type": "text", "data": {"text": text}}]
+    send_group_msg(data, group_id, quote)
 
 
 def send_personal_msg(msg_chain, target):
-    send("sendFriendMessage", {"target": target, "messageChain": msg_chain})
+    send("send_private_msg", {"user_id": target, "message": msg_chain})
+
+
+def send_personal_text(text, target):
+    data = [{"type": "text", "data": {"text": text}}]
+    send_personal_msg(data, target)
 
 
 def mute(user_id, group_id, time_len):
-    send("mute", {"memberId": user_id, "target": group_id, "time": time_len})
+    send(
+        "set_group_ban",
+        {"user_id": user_id, "group_id": group_id, "duration": time_len},
+    )
 
 
 def unmute(user_id, group_id):
-    send("unmute", {"memberId": user_id, "target": group_id})
+    mute(user_id, group_id, 0)
 
 
 def check_if_plain_msg(msg):
-    return len(msg["messageChain"]) == 2 and msg["messageChain"][1]["type"] == "Plain"
+    return len(msg["message"]) == 1 and msg["message"][0]["type"] == "text"
 
 
 def cmp_obj(o1, o2):
+    d1, d2 = o1["data"], o2["data"]
     if o1["type"] != o2["type"]:
         return False
-    if o1["type"] == "At":
-        return o1["target"] == o2["target"]
-    if o1["type"] == "AtAll":
-        return True
-    if o1["type"] == "Face":
-        return o1["faceId"] == o2["faceId"]
-    if o1["type"] == "Plain":
-        return o1["text"] == o2["text"]
-    if o1["type"] == "Image" or o1["type"] == "FlashImage":
-        return o1["imageId"] == o2["imageId"]
+    if o1["type"] == "at":
+        return d1["qq"] == d1["qq"]
+    if o1["type"] == "face":
+        return d1["id"] == d2["id"]
+    if o1["type"] == "text":
+        return d1["text"] == d2["text"]
+    if o1["type"] == "image":
+        return d1["file"] == d2["file"]
     return False
 
 
@@ -155,11 +153,12 @@ def deal_msg(msg):
 
 def deal_msg_(msg):
     try:
-        if msg["type"] == "GroupMessage":
-            deal_group_msg(msg)
-        if msg["type"] == "FriendMessage":
-            deal_friend_msg(msg)
-        if msg["type"] == "NewFriendRequestEvent":
+        if msg["post_type"] == "message":
+            if msg["message_type"] == "private":
+                deal_friend_msg(msg)
+            elif msg["message_type"] == "group":
+                deal_group_msg(msg)
+        if msg["post_type"] == "request" and msg["request_type"] == "friend":
             auto_add_friend(msg)
     except:
         error_db.insert_one(
@@ -174,14 +173,8 @@ def deal_msg_(msg):
 
 
 def auto_add_friend(msg):
-    req = {
-        "eventId": msg["eventId"],
-        "fromId": msg["fromId"],
-        "groupId": msg["groupId"],
-        "operate": 0,
-        "message": "",
-    }
-    send("resp_newFriendRequestEvent", req)
+    req = {"flag": msg["flag"], "approve": True, "remark": ""}
+    send("set_friend_add_request", req)
 
 
 def deal_friend_msg(msg):
@@ -192,24 +185,15 @@ def deal_group_msg(msg):
     global chat_history
     global MAX_LEN
 
-    if len(msg["messageChain"]) < 2:
-        return
-
-    if filter_msg(msg):
-        return
-
-    message = {"id": msg["sender"]["id"], "msg": msg["messageChain"]}
-    group_id = msg["sender"]["group"]["id"]
+    message = {"id": msg["user_id"], "msg": msg["message"]}
+    group_id = msg["group_id"]
 
     lock.acquire()
     if group_id not in chat_history:
         chat_history[group_id] = [message] + [
             {
                 "id": 0,
-                "msg": [
-                    {"type": "Source", "id": 0, "time": 0},
-                    {"type": "Plain", "text": ""},
-                ],
+                "msg": [{"type": "text", "data": {"text": ""}}],
             }
         ] * (MAX_LEN - 1)
     else:
@@ -224,8 +208,6 @@ def deal_group_msg(msg):
         return
     if deal_command(msg):
         return
-    if alalasb(msg):
-        return
     if repeat(msg):
         return
     if deal_plain_text(msg):
@@ -235,10 +217,10 @@ def deal_group_msg(msg):
 
 
 def filter_msg(msg):
-    chain = msg["messageChain"]
-    if len(chain) != 2 or chain[1]["type"] != "Plain":
+    chain = msg["message"]
+    if len(chain) != 1 or chain[0]["type"] != "text":
         return False
-    recv_message = chain[1]["text"]
+    recv_message = chain[0]["data"]["text"]
     for item in filter_sentence():
         if item in recv_message:
             return True
@@ -246,12 +228,12 @@ def filter_msg(msg):
 
 
 def ban_user(msg):
-    chain = msg["messageChain"]
-    if len(chain) != 2 or chain[1]["type"] != "Plain":
+    chain = msg["message"]
+    if len(chain) != 1 or chain[0]["type"] != "text":
         return False
-    group_id = msg["sender"]["group"]["id"]
-    user_id = msg["sender"]["id"]
-    recv_message = msg["messageChain"][1]["text"]
+    group_id = msg["group_id"]
+    user_id = msg["user_id"]
+    recv_message = chain[0]["data"]["text"]
     for rule in keywords():
         if group_id not in rule["suitable_group"]:
             continue
@@ -262,46 +244,22 @@ def ban_user(msg):
                 for id in rule["unmute_list"]:
                     unmute(id, group_id)
                 if rule["recall"]:
-                    send("recall", {"target": chain[0]["id"]})
+                    send("delete_msg", {"message_id": msg["message_id"]})
                 return True
     return False
 
 
 def alalalala(msg):
-    chain = msg["messageChain"]
-    if chain[1]["type"] == "At":
-        if chain[1]["target"] != config["mirai"]["qq"]:
+    chain = msg["message"]
+    if chain[0]["type"] == "at":
+        if chain[0]["data"]["qq"] != config["mirai"]["qq"]:
             return False
-        m = chain[2]["text"]
+        m = chain[1]["data"]["text"]
         logging.info("alala recv: " + m)
         r = requests.post(config["bot"]["chatbot"]["url"], json={"text": m})
         logging.info("alala response: " + r.json()["text"])
-        send(
-            "sendGroupMessage",
-            {
-                "target": msg["sender"]["group"]["id"],
-                "messageChain": [{"type": "Plain", "text": r.json()["text"]}],
-            },
-        )
-        return True
-    return False
-
-
-def alalasb(msg):
-    chain = msg["messageChain"]
-    if (
-        len(chain) == 2
-        and chain[1]["type"] == "Plain"
-        and re.match("a(la)+sb", chain[1]["text"].replace(" ", "").lower())
-    ):
-        send("recall", {"target": chain[0]["id"]})
-        send(
-            "memberInfo",
-            {
-                "target": msg["sender"]["group"]["id"],
-                "memberId": msg["sender"]["id"],
-                "info": {"name": "alala的儿子"},
-            },
+        send_group_msg(
+            [{"type": "text", "data": {"text": r.json()["text"]}}], msg["group_id"]
         )
         return True
     return False
@@ -309,15 +267,15 @@ def alalasb(msg):
 
 def repeat(msg):
     lock.acquire()
-    msg_history = chat_history[msg["sender"]["group"]["id"]]
+    msg_history = chat_history[msg["group_id"]]
     lock.release()
     if len(msg_history) < 3:
         return False
     msgChainList = []
     for m in msg_history:
-        msgChainList.append(m["msg"][1:])
+        msgChainList.append(m["msg"])
 
-    if len(msgChainList[0]) == 1 and msgChainList[0][0]["type"] == "Plain":
+    if len(msgChainList[0]) == 1 and msgChainList[0][0]["type"] == "text":
         return False
 
     def compare_list(a, b):
@@ -331,7 +289,7 @@ def repeat(msg):
     if compare_list(msgChainList[0], msgChainList[1]) and not compare_list(
         msgChainList[1], msgChainList[2]
     ):
-        send_group_msg(msgChainList[1], msg["sender"]["group"]["id"])
+        send_group_msg(msgChainList[1], msg["group_id"])
         return True
     return False
 
@@ -339,11 +297,11 @@ def repeat(msg):
 def deal_plain_text(msg):
     if not check_if_plain_msg(msg):
         return False
-    group_id = msg["sender"]["group"]["id"]
-    sender_id = msg["sender"]["id"]
-    recv_message = "".join([x["text"] for x in msg["messageChain"][1:]])
-    time = msg["messageChain"][0]["time"]
-    msg_id = msg["messageChain"][0]["id"]
+    group_id = msg["group_id"]
+    sender_id = msg["user_id"]
+    recv_message = "".join([x["data"]["text"] for x in msg["message"]])
+    time = msg["time"]
+    msg_id = msg["message_id"]
     history_db.insert_one(
         {
             "group_id": group_id,
@@ -358,7 +316,7 @@ def deal_plain_text(msg):
                 continue
             return_msg = get_return_msg(recv_message, group_id, rule, str(sender_id))
             if return_msg is not None:
-                send_msg = [{"type": "Plain", "text": return_msg}]
+                send_msg = [{"type": "text", "data": {"text": return_msg}}]
                 quote = None
                 if rule.get("quote", False):
                     quote = msg_id
@@ -396,8 +354,8 @@ def get_return_msg(input_msg, group_id, rule, user_id):
     chat_history_map = {}
     lock.acquire()
     for idx, item in enumerate(chat_history[group_id]):
-        if len(item["msg"]) == 2 and item["msg"][1]["type"] == "Plain":
-            chat_history_map["m" + str(idx)] = item["msg"][1]["text"]
+        if len(item["msg"]) == 1 and item["msg"][0]["type"] == "text":
+            chat_history_map["m" + str(idx)] = item["msg"][0]["data"]["text"]
         else:
             chat_history_map["m" + str(idx)] = ""
     lock.release()
@@ -487,20 +445,20 @@ def get_return_msg(input_msg, group_id, rule, user_id):
 
 def deal_command(msg):
     text_list = []
-    for item in msg["messageChain"][1:]:
-        if item["type"] != "Plain":
+    for item in msg["message"]:
+        if item["type"] != "text":
             return False
-        text_list.append(item["text"])
+        text_list.append(item["data"]["text"])
     if text_list[0][0] not in [".", "。"] or len(text_list[0]) < 2:
         return False
     text_list = " ".join(text_list).split(" ")
     command = text_list[0][1:]
-    if msg["type"] == "FriendMessage":
+    if msg["message_type"] == "private":
         if command == "send":
             return command_personal_send(text_list, msg)
         if command == "sendgroup":
             return command_personal_send_group(text_list, msg)
-    if msg["type"] == "GroupMessage":
+    if msg["message_type"] == "group":
         if command == "roll":
             return command_group_roll(text_list, msg)
         if command[0] == "r":
@@ -510,18 +468,12 @@ def deal_command(msg):
 
 def command_personal_send(text_list, msg):
     if not text_list[1].isdigit():
-        send(
-            "sendFriendMessage",
-            {
-                "target": msg["sender"]["id"],
-                "messageChain": [{"type": "Plain", "text": "用户QQ号错误"}],
-            },
-        )
+        send_personal_text("用户QQ号错误", msg["user_id"])
         return True
     target = int(text_list[1])
     text = " ".join(text_list[2:])
-    send_personal_msg([{"type": "Plain", "text": text}], target)
-    send_personal_msg([{"type": "Plain", "text": "已发送"}], msg["sender"]["id"])
+    send_personal_text(text, target)
+    send_personal_text("已发送", msg["user_id"])
     return True
 
 
@@ -543,13 +495,7 @@ def command_new_roll(text_list, msg):
     dimension = int(dimension)
 
     if frequency < 1 or frequency > 10000:
-        send(
-            "sendGroupMessage",
-            {
-                "target": msg["sender"]["group"]["id"],
-                "messageChain": [{"type": "Plain", "text": "爬"}],
-            },
-        )
+        send_group_text("爬", msg["group_id"])
         return True
 
     random_num = 0
@@ -559,15 +505,15 @@ def command_new_roll(text_list, msg):
         action = text_list[1]
         if len(action) == 1:
             return_msg = "{}直接进行一个{}:\n{}".format(
-                msg["sender"]["memberName"], action, random_num
+                msg["sender"]["nickname"], action, random_num
             )
         else:
             return_msg = "{}直接进行一个{}的{}:\n{}".format(
-                msg["sender"]["memberName"], action[1:], action[0], random_num
+                msg["sender"]["nickname"], action[1:], action[0], random_num
             )
     else:
         return_msg = "{}投掷了{}次{}面骰子：\n{}".format(
-            msg["sender"]["memberName"], str(frequency), str(dimension), random_num
+            msg["sender"]["nickname"], str(frequency), str(dimension), random_num
         )
 
     if frequency == 1 and dimension == 100:
@@ -575,26 +521,15 @@ def command_new_roll(text_list, msg):
             return_msg += "\n大失败，心中已无悲喜"
         elif random_num < 6:
             return_msg += "\n好耶大成功"
-    send(
-        "sendGroupMessage",
-        {
-            "target": msg["sender"]["group"]["id"],
-            "messageChain": [{"type": "Plain", "text": return_msg}],
-        },
-    )
+    send_group_text(return_msg, msg["group_id"])
     return True
 
 
 def command_group_roll(text_list, msg):
     for item in text_list[1:]:
         if not item.isdigit():
-            send(
-                "sendGroupMessage",
-                {
-                    "target": msg["sender"]["group"]["id"],
-                    "messageChain": [{"type": "Plain", "text": "参数错误"}],
-                },
-            )
+            send_group_text("参数错误", msg["group_id"])
+            return True
     low = 0
     high = 100
     count = 1
@@ -614,7 +549,7 @@ def command_group_roll(text_list, msg):
         random_num = random.randint(low, high)
         random_list.append(random_num)
     return_msg = "{}投出了[{}, {})：\n".format(
-        msg["sender"]["memberName"], str(low), str(high)
+        msg["sender"]["nickname"], str(low), str(high)
     )
     append_msg = ""
     if count == 1:
@@ -627,39 +562,18 @@ def command_group_roll(text_list, msg):
         append_msg = append_msg[:-1]
         append_msg += " = {}".format(s)
     return_msg += append_msg
-    send(
-        "sendGroupMessage",
-        {
-            "target": msg["sender"]["group"]["id"],
-            "messageChain": [{"type": "Plain", "text": return_msg}],
-        },
-    )
+    send_group_text(return_msg, msg["group_id"])
     return True
 
 
 def command_personal_send_group(text_list, msg):
     if not text_list[1].isdigit():
-        send(
-            "sendFriendMessage",
-            {
-                "target": msg["sender"]["id"],
-                "messageChain": [{"type": "Plain", "text": "群号错误"}],
-            },
-        )
+        send_personal_text("群号错误", msg["user_id"])
         return True
     target = int(text_list[1])
     text = " ".join(text_list[2:])
-    send(
-        "sendGroupMessage",
-        {"target": target, "messageChain": [{"type": "Plain", "text": text}]},
-    )
-    send(
-        "sendFriendMessage",
-        {
-            "target": msg["sender"]["id"],
-            "messageChain": [{"type": "Plain", "text": "已发送"}],
-        },
-    )
+    send_group_text(text, target)
+    send_personal_text("已发送", msg["user_id"])
     return True
 
 
@@ -703,7 +617,7 @@ def bili_monitor():
                     send_msg = []
                     for m in item["send_msg"]:
                         send_msg.append(
-                            [{"type": "Plain", "text": m.format(**vid_info)}]
+                            [{"type": "text", "data": {"text": m.format(**vid_info)}}]
                         )
                     for msg in send_msg:
                         for user in item["subs_user"]:
