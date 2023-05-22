@@ -15,9 +15,13 @@ from user import current_login_user, register_user_module
 from flask_login import login_required
 import secrets
 from flask_login import current_user
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 app = Flask(__name__)
 app.secret_key = secrets.token_urlsafe(16)
+app.wsgi_app = ProxyFix(
+    app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1
+)
 register_user_module(app)
 CORS(app)
 
