@@ -108,7 +108,7 @@ def send_group_msg(msgChain, group_id, quote=None):
 
 def send_group_text(text, group_id, quote=None):
     if text.startswith("image: "):
-        image = "base64://" + text[len("image: "):]
+        image = text[len("image: "):]
         data = [{"type": "image", "file": image}]
     else:
         data = [{"type": "text", "data": {"text": text}}]
@@ -121,7 +121,7 @@ def send_personal_msg(msg_chain, target):
 
 def send_personal_text(text, target):
     if text.startswith("image: "):
-        image = "base64://" + text[len("image: "):]
+        image = text[len("image: "):]
         data = [{"type": "image", "file": image}]
     else:
         data = [{"type": "text", "data": {"text": text}}]
