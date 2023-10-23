@@ -109,7 +109,7 @@ def send_group_msg(msgChain, group_id, quote=None):
 def send_group_text(text, group_id, quote=None):
     if text.startswith("image: "):
         image = text[len("image: "):]
-        data = [{"type": "image", "file": image}]
+        data = [{"type": "image", "data": {"file": image}}]
     else:
         data = [{"type": "text", "data": {"text": text}}]
     send_group_msg(data, group_id, quote)
@@ -122,7 +122,7 @@ def send_personal_msg(msg_chain, target):
 def send_personal_text(text, target):
     if text.startswith("image: "):
         image = text[len("image: "):]
-        data = [{"type": "image", "file": image}]
+        data = [{"type": "image", "data": {"file": image}}]
     else:
         data = [{"type": "text", "data": {"text": text}}]
     send_personal_msg(data, target)
@@ -327,11 +327,10 @@ def deal_plain_text(msg):
                 continue
             return_msg = get_return_msg(recv_message, group_id, rule, str(sender_id))
             if return_msg is not None:
-                send_msg = [{"type": "text", "data": {"text": return_msg}}]
                 quote = None
                 if rule.get("quote", False):
                     quote = msg_id
-                send_group_msg(send_msg, group_id, quote=quote)
+                send_group_text(return_msg, group_id, quote=quote)
                 return True
     return False
 
