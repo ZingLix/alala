@@ -85,8 +85,34 @@ def start_qqbot_loop():
     wst.daemon = True
     wst.start()
 
+def update_image_files(msg):
+    """
+    Updates the "file" field in "data" of objects with type "image" and specific conditions.
+
+    Args:
+        msg (list): A list of dictionaries to process.
+
+    Returns:
+        list: The updated list.
+    """
+    for item in msg:
+        if (
+            isinstance(item, dict)
+            and item.get("type") == "image"
+            and isinstance(item.get("data"), dict)
+        ):
+            data = item["data"]
+            if (
+                "file" in data
+                and "url" in data
+                and isinstance(data["file"], str)
+                and data["file"].endswith(".image")
+            ):
+                data["file"] = data["url"]
+    return msg
 
 def send(path, msg):
+    msg = update_image_files(msg)
     send_msg = {"action": path, "params": msg}
     if ws_server is not None:
         ws_server.send(json.dumps(send_msg))
