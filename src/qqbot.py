@@ -112,7 +112,7 @@ def update_image_files(msg):
     return msg
 
 def send(path, msg):
-    msg = update_image_files(msg)
+    msg["message"] = update_image_files(msg["message"])
     send_msg = {"action": path, "params": msg}
     if ws_server is not None:
         ws_server.send(json.dumps(send_msg))
