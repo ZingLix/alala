@@ -222,6 +222,9 @@ def deal_group_msg(msg):
     global chat_history
     global MAX_LEN
 
+    if filter_msg(msg):
+        return
+    
     message = {"id": msg["user_id"], "msg": msg["message"]}
     group_id = msg["group_id"]
 
